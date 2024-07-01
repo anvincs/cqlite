@@ -100,53 +100,53 @@ Pager* pager_open(const char* filename) {
     return pager;
 }
 
-// void pager_flush(Pager* pager, uint32_t page_num, uint32_t size) {
-//   if (pager->pages[page_num] == NULL) {
-//     printf("Tried to flush null page\n");
-//     exit(EXIT_FAILURE);
-//   }
+void pager_flush(Pager* pager, uint32_t page_num, uint32_t size) {
+  if (pager->pages[page_num] == NULL) {
+    printf("Tried to flush null page\n");
+    exit(EXIT_FAILURE);
+  }
 
-//   // off_t offset = lseek(pager->file_handle, page_num * PAGE_SIZE, SEEK_SET);
-//   LARGE_INTEGER offset;
-//   LARGE_INTEGER newFilePointer;
+  // off_t offset = lseek(pager->file_handle, page_num * PAGE_SIZE, SEEK_SET);
+  LARGE_INTEGER offset;
+  LARGE_INTEGER newFilePointer;
 
-//   offset.QuadPart = (LONGLONG)page_num * PAGE_SIZE;
+  offset.QuadPart = (LONGLONG)page_num * PAGE_SIZE;
 
-//   if (SetFilePointerEx(pager->file_handle, offset, &newFilePointer, FILE_BEGIN) == 0) {
-//       // Handle error
-//       DWORD error = GetLastError();
-//       printf("Error setting file pointer: %lu\n", error);
-//       exit(EXIT_FAILURE);
-//   }
+  if (SetFilePointerEx(pager->file_handle, offset, &newFilePointer, FILE_BEGIN) == 0) {
+      // Handle error
+      DWORD error = GetLastError();
+      printf("Error setting file pointer: %lu\n", error);
+      exit(EXIT_FAILURE);
+  }
 
 
 
-//   if (SetFilePointerEx(pager->file_handle, offset, &newFilePointer, FILE_BEGIN) == 0) {
-//     DWORD error = GetLastError();
-//     printf("Error seeking: %lu\n", error);
-//     exit(EXIT_FAILURE);
-//   }
+  if (SetFilePointerEx(pager->file_handle, offset, &newFilePointer, FILE_BEGIN) == 0) {
+    DWORD error = GetLastError();
+    printf("Error seeking: %lu\n", error);
+    exit(EXIT_FAILURE);
+  }
 
-//   DWORD bytes_written;
-//   BOOL write_result = WriteFile(
-//     pager->file_handle,                   // File handle
-//     pager->pages[page_num],               // Buffer to write from
-//     size,                                 // Number of bytes to write
-//     &bytes_written,                       // Number of bytes written
-//     NULL                                  // Overlapped structure (not used here)
-//   );
+  DWORD bytes_written;
+  BOOL write_result = WriteFile(
+    pager->file_handle,                   // File handle
+    pager->pages[page_num],               // Buffer to write from
+    size,                                 // Number of bytes to write
+    &bytes_written,                       // Number of bytes written
+    NULL                                  // Overlapped structure (not used here)
+  );
 
-//   if (write_result == FALSE) {
-//       DWORD error = GetLastError();
-//       printf("Error writing to file: %lu\n", error);
-//       exit(EXIT_FAILURE);
-//   }
+  if (write_result == FALSE) {
+      DWORD error = GetLastError();
+      printf("Error writing to file: %lu\n", error);
+      exit(EXIT_FAILURE);
+  }
 
-//   if (bytes_written != size) {
-//       printf("Partial write occurred\n");
-//       // Handle partial write if necessary
-//   }
-// }
+  if (bytes_written != size) {
+      printf("Partial write occurred\n");
+      // Handle partial write if necessary
+  }
+}
 
 void* get_page(Pager* pager, uint32_t page_num) {
   if (page_num > TABLE_MAX_PAGES) {
@@ -379,58 +379,6 @@ void deserialize_row(void* source, Row* destination) {
   memcpy(&(destination->email), source + EMAIL_OFFSET, EMAIL_SIZE);
 }
 
-void* get_page(Pager* pager, uint32_t page_num) {
-  if (page_num > TABLE_MAX_PAGES) {
-    printf("Tried to fetch page number out of bounds. %d > %d\n", page_num,
-           TABLE_MAX_PAGES);
-    exit(EXIT_FAILURE);
-  }
-
-  if (pager->pages[page_num] == NULL) {
-    // Cache miss. Allocate memory and load from file.
-    void* page = malloc(PAGE_SIZE);
-    uint32_t num_pages = pager->file_length / PAGE_SIZE;
-
-    // We might save a partial page at the end of the file
-    if (pager->file_length % PAGE_SIZE) {
-      num_pages += 1;
-    }
-
-    // if (page_num <= num_pages) {
-    //   lseek(pager->file_handle, page_num * PAGE_SIZE, SEEK_SET);
-    //   ssize_t bytes_read = read(pager->file_handle, page, PAGE_SIZE);
-    //   if (bytes_read == -1) {
-    //     printf("Error reading file: %d\n", errno);
-    //     exit(EXIT_FAILURE);
-    //   }
-    // }
-
-    if (page_num <= num_pages) {
-    DWORD bytesRead;
-    LARGE_INTEGER offset;
-    offset.QuadPart = (LONGLONG)page_num * PAGE_SIZE;
-
-    if (SetFilePointerEx(pager->file_handle, offset, NULL, FILE_BEGIN) == 0) {
-        printf("Error setting file pointer: %lu\n", GetLastError());
-        exit(EXIT_FAILURE);
-    }
-
-    if (ReadFile(pager->file_handle, page, PAGE_SIZE, &bytesRead, NULL) == 0) {
-        printf("Error reading file: %lu\n", GetLastError());
-        exit(EXIT_FAILURE);
-    }
-
-    if (bytesRead < PAGE_SIZE && bytesRead > 0) {
-        // Handle partial read if needed
-        memset((char*)page + bytesRead, 0, PAGE_SIZE - bytesRead);
-    }
-}
-
-    pager->pages[page_num] = page;
-  }
-
-  return pager->pages[page_num];
-}
 
 void* row_slot(Table* table, uint32_t row_num) {
   uint32_t page_num = row_num / ROWS_PER_PAGE;
@@ -493,7 +441,7 @@ int main(int argc, char* argv[]) {
     read_input(input_buffer);
 
     if (strcmp(input_buffer->buffer, ".exit") == 0) {
-      close_input_buffer(input_buffer);
+      db_close(table);
       exit(EXIT_SUCCESS);
     } else {
       if (input_buffer->buffer[0] == '.') {
