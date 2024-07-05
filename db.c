@@ -268,8 +268,56 @@ void* get_page(Pager* pager, uint32_t page_num) {
   return pager->pages[page_num];
 }
 
+NodeType get_node_type(void* node) {
+  uint8_t value = *((uint8_t*)(node + NODE_TYPE_OFFSET));
+  return (NodeType)value;
+}
+
+void set_node_type(void* node, NodeType type) {
+  uint8_t value = type;
+  *((uint8_t*)(node + NODE_TYPE_OFFSET)) = value;
+}
+
+bool is_node_root(void* node) {
+  uint8_t value = *((uint8_t*)(node + IS_ROOT_OFFSET));
+  return (bool)value;
+}
+
+void set_node_root(void* node, bool is_root) {
+  uint8_t value = is_root;
+  *((uint8_t*)(node + IS_ROOT_OFFSET)) = value;
+}
+
+uint32_t* leaf_node_num_cells(void* node) {
+  return node + LEAF_NODE_NUM_CELLS_OFFSET;
+}
+
+void initialize_leaf_node(void* node) { 
+  set_node_type(node, NODE_LEAF);
+  set_node_root(node, false);
+  *leaf_node_num_cells(node) = 0;
+}
+
+void* leaf_node_cell(void* node, uint32_t cell_num) {
+  return node + LEAF_NODE_HEADER_SIZE + cell_num * LEAF_NODE_CELL_SIZE;
+}
+
+uint32_t* leaf_node_key(void* node, uint32_t cell_num) {
+  return leaf_node_cell(node, cell_num);
+}
+
+void* leaf_node_value(void* node, uint32_t cell_num) {
+  return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
+}
+
 uint32_t* internal_node_num_keys(void* node) {
   return node + INTERNAL_NODE_NUM_KEYS_OFFSET;
+}
+
+void initialize_internal_node(void* node) {
+  set_node_type(node, NODE_INTERNAL);
+  set_node_root(node, false);
+  *internal_node_num_keys(node) = 0;
 }
 
 uint32_t* internal_node_right_child(void* node) {
@@ -305,15 +353,10 @@ uint32_t get_node_max_key(void* node) {
   }
 }
 
-bool is_node_root(void* node) {
-  uint8_t value = *((uint8_t*)(node + IS_ROOT_OFFSET));
-  return (bool)value;
-}
 
-void set_node_root(void* node, bool is_root) {
-  uint8_t value = is_root;
-  *((uint8_t*)(node + IS_ROOT_OFFSET)) = value;
-}
+// Until we start recycling free pages, new pages will always
+// go onto the end of the database file
+uint32_t get_unused_page_num(Pager* pager) { return pager->num_pages; }
 
 void create_new_root(Table *table, uint32_t right_child_page_num) {
   // Handle splitting the root.
@@ -338,48 +381,6 @@ void create_new_root(Table *table, uint32_t right_child_page_num) {
   uint32_t left_child_max_key = get_node_max_key(left_child);
   *internal_node_key(root, 0) = left_child_max_key;
   *internal_node_right_child(root) = right_child_page_num;
-}
-
-NodeType get_node_type(void* node) {
-  uint8_t value = *((uint8_t*)(node + NODE_TYPE_OFFSET));
-  return (NodeType)value;
-}
-
-void set_node_type(void* node, NodeType type) {
-  uint8_t value = type;
-  *((uint8_t*)(node + NODE_TYPE_OFFSET)) = value;
-}
-
-uint32_t* leaf_node_num_cells(void* node) {
-  return node + LEAF_NODE_NUM_CELLS_OFFSET;
-}
-
-void* leaf_node_cell(void* node, uint32_t cell_num) {
-  return node + LEAF_NODE_HEADER_SIZE + cell_num * LEAF_NODE_CELL_SIZE;
-}
-
-uint32_t* leaf_node_key(void* node, uint32_t cell_num) {
-  return leaf_node_cell(node, cell_num);
-}
-
-void* leaf_node_value(void* node, uint32_t cell_num) {
-  return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
-}
-
-// Until we start recycling free pages, new pages will always
-// go onto the end of the database file
-uint32_t get_unused_page_num(Pager* pager) { return pager->num_pages; }
-
-void initialize_leaf_node(void* node) { 
-  set_node_type(node, NODE_LEAF);
-  set_node_root(node, false);
-  *leaf_node_num_cells(node) = 0;
-}
-
-void initialize_internal_node(void* node) {
-  set_node_type(node, NODE_INTERNAL);
-  set_node_root(node, false);
-  *internal_node_num_keys(node) = 0;
 }
 
 void leaf_node_split_and_insert(Cursor *cursor, uint32_t key, Row *value) {
@@ -751,13 +752,8 @@ void print_row(Row* row) {
 ExecuteResult execute_insert(Statement* statement, Table* table) {
   void* node = get_page(table->pager, table->root_page_num);
   uint32_t num_cells = (*leaf_node_num_cells(node));
-  // if (num_cells >= LEAF_NODE_MAX_CELLS) {
-  //   return EXECUTE_TABLE_FULL;
-  // }
-  // Cursor* cursor = table_end(table);
 
   Row* row_to_insert = &(statement->row_to_insert);
-  uint32_t key_to_insert = statement->row_to_insert.id;
 
   uint32_t key_to_insert = row_to_insert->id;
   Cursor* cursor = table_find(table, key_to_insert);
